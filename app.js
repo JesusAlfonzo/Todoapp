@@ -1,4 +1,5 @@
 const http = require("http");
+const db = require("./db");
 
 // A. Creamos el servidor para aceptar peticiones y dar respuestas
 const server = http.createServer(async (req, res) => {
@@ -8,11 +9,12 @@ const server = http.createServer(async (req, res) => {
   const { url, method } = req;
 
   //2. condicionales para dar respuesta segun el cotenido de la url del usuario
-
   //Raiz
   if (req.url === "/" && method === "GET") {
     res.statusCode = 200;
     res.end("<h1>Bienvenido a mi todo app</h1><p>Estas en el home</p>");
+    return;
+
   }
 
   //Login
@@ -26,13 +28,65 @@ const server = http.createServer(async (req, res) => {
                 <button type="submit">Enviar datos</button>
             </form>
         `);
-  }
+        return;
+
+  } else if (req.url === "/login" && method === "POST") {
+        
+        // ENVUELVE TODO EN EL TRY PARA CAPTURAR ERRORES DE BD
+        try {
+            // 1. Esperamos los datos (el await debe estar dentro del try)
+            const dataText = await dataBody(req); // Asegúrate que tu función se llame así
+            
+            console.log("datos crudos recibidos:", dataText);
+
+            // 2. Parsear
+            const param = new URLSearchParams(dataText);
+            const email = param.get("email");
+            const password = param.get("password");
+
+            // 3. Consulta a la Base de Datos
+            const [rows] = await db.execute("SELECT * FROM users WHERE email = ?", [email]);
+
+            // CASO A: El usuario EXISTE
+            if (rows.length > 0) {
+                const user = rows[0];
+
+                // Verificar contraseña
+                if (user.password_hash === password) {
+                    res.statusCode = 200;
+                    res.end(`<h1>Bienvenido ${user.first_name}!</h1><p>Te logueaste exitosamente</p>`);
+                    return; // <--- FINALIZA AQUÍ. IMPORTANTE.
+                } else {
+                    res.statusCode = 401;
+                    res.end(`<h1>Error</h1><p>Contraseña incorrecta</p>`);
+                    return; // <--- FINALIZA AQUÍ.
+                }
+            } 
+            
+            // CASO B: El usuario NO EXISTE (rows está vacío)
+            else {
+                res.statusCode = 404; // Cambié a 404 porque no se encontró
+                res.end(`<h1>Error</h1><p>Usuario no encontrado</p>`);
+                return; // <--- FINALIZA AQUÍ.
+            }
+
+            // NOTA: He borrado el paso 4 "Respuesta temporal" porque ya respondimos arriba.
+            // Si dejaras código aquí abajo, causaría el error "Write after end".
+
+        } catch (error) {
+            // SI ALGO FALLA (ej: BD desconectada), cae aquí
+            console.error("Error en el servidor:", error);
+            res.statusCode = 500;
+            res.end("<h1>Error interno del servidor</h1>");
+            return;
+        }
+    }
 
   //Register
-  else if (req.url === "/register") {
-    res.statusCode = 200;
-    res.end("<h1>Registro de cuenta</h1><p>estas ahora en el register</p>");
-  }
+  // else if (req.url === "/register") {
+  //   res.statusCode = 200;
+  //   res.end("<h1>Registro de cuenta</h1><p>estas ahora en el register</p>");
+  // }
 
   //Caso de error 404 (se solicito una pagina no existente)
   else {
@@ -40,6 +94,7 @@ const server = http.createServer(async (req, res) => {
     res.end(
       "<h1>Error 404</h1><p>La pagina que tratas de consultar no se encontro.</p>"
     );
+    return;
   }
 });
 
